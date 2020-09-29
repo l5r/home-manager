@@ -137,7 +137,7 @@ let
       options = mkOption {
         type = types.listOf types.str;
         default = [];
-        example = ["grp:caps_toggle" "grp_led:scroll"];
+        example = [ "grp:caps_toggle" "grp_led:scroll" ];
         description = ''
           X keyboard options; layout switching goes here.
         '';
@@ -168,15 +168,17 @@ in
   meta.maintainers = [ maintainers.rycee ];
 
   imports = [
-    (mkRemovedOptionModule [ "home" "sessionVariableSetter" ] ''
-      Session variables are now always set through the shell. This is
-      done automatically if the shell configuration is managed by Home
-      Manager. If not, then you must source the
+    (
+      mkRemovedOptionModule [ "home" "sessionVariableSetter" ] ''
+        Session variables are now always set through the shell. This is
+        done automatically if the shell configuration is managed by Home
+        Manager. If not, then you must source the
 
-        ~/.nix-profile/etc/profile.d/hm-session-vars.sh
+          ~/.nix-profile/etc/profile.d/hm-session-vars.sh
 
-      file yourself.
-    '')
+        file yourself.
+      ''
+    )
   ];
 
   options = {
@@ -266,7 +268,7 @@ in
 
     home.sessionPath = mkOption {
       type = with types; listOf str;
-      default = [ ];
+      default = [];
       example = [
         ".git/safe/../../bin"
         "\${xdg.configHome}/emacs/bin"
@@ -413,7 +415,7 @@ in
 
     home.profileDirectory =
       if config.submoduleSupport.enable
-        && config.submoduleSupport.externalPackageInstall
+      && config.submoduleSupport.externalPackageInstall
       then "/etc/profiles/per-user/${cfg.username}"
       else cfg.homeDirectory + "/.nix-profile";
 
@@ -422,28 +424,17 @@ in
         maybeSet = n: v: optionalAttrs (v != null) { ${n} = v; };
       in
         (maybeSet "LANG" cfg.language.base)
-        //
-        (maybeSet "LC_CTYPE" cfg.language.ctype)
-        //
-        (maybeSet "LC_NUMERIC" cfg.language.numeric)
-        //
-        (maybeSet "LC_TIME" cfg.language.time)
-        //
-        (maybeSet "LC_COLLATE" cfg.language.collate)
-        //
-        (maybeSet "LC_MONETARY" cfg.language.monetary)
-        //
-        (maybeSet "LC_MESSAGES" cfg.language.messages)
-        //
-        (maybeSet "LC_PAPER" cfg.language.paper)
-        //
-        (maybeSet "LC_NAME" cfg.language.name)
-        //
-        (maybeSet "LC_ADDRESS" cfg.language.address)
-        //
-        (maybeSet "LC_TELEPHONE" cfg.language.telephone)
-        //
-        (maybeSet "LC_MEASUREMENT" cfg.language.measurement);
+        // (maybeSet "LC_CTYPE" cfg.language.ctype)
+        // (maybeSet "LC_NUMERIC" cfg.language.numeric)
+        // (maybeSet "LC_TIME" cfg.language.time)
+        // (maybeSet "LC_COLLATE" cfg.language.collate)
+        // (maybeSet "LC_MONETARY" cfg.language.monetary)
+        // (maybeSet "LC_MESSAGES" cfg.language.messages)
+        // (maybeSet "LC_PAPER" cfg.language.paper)
+        // (maybeSet "LC_NAME" cfg.language.name)
+        // (maybeSet "LC_ADDRESS" cfg.language.address)
+        // (maybeSet "LC_TELEPHONE" cfg.language.telephone)
+        // (maybeSet "LC_MEASUREMENT" cfg.language.measurement);
 
     home.packages = [
       # Provide a file holding all session variables.
@@ -457,7 +448,7 @@ in
             export __HM_SESS_VARS_SOURCED=1
 
             ${config.lib.shell.exportAll cfg.sessionVariables}
-          '' + lib.optionalString (cfg.sessionPath != [ ]) ''
+          '' + lib.optionalString (cfg.sessionPath != []) ''
             export PATH="$PATH''${PATH:+:}${concatStringsSep ":" cfg.sessionPath}"
           '' + cfg.sessionVariablesExtra;
         }
@@ -483,33 +474,36 @@ in
     # In case the user has moved from a user-install of Home Manager
     # to a submodule managed one we attempt to uninstall the
     # `home-manager-path` package if it is installed.
-    home.activation.installPackages = hm.dag.entryAfter ["writeBoundary"] (
+    home.activation.installPackages = hm.dag.entryAfter [ "writeBoundary" ] (
       if config.submoduleSupport.externalPackageInstall
       then
         ''
-          if nix-env -q | grep '^home-manager-path$'; then
+          if nix profile info | grep '^home-manager-path$'; then
             $DRY_RUN_CMD nix-env -e home-manager-path
           fi
         ''
       else
         ''
           if ! $DRY_RUN_CMD nix-env -i ${cfg.path} ; then
-            cat <<EOF
+            if ! $DRY_RUN_CMD nix profile install ${cfg.path} ; then
+              cat <<EOF
 
-          Oops, nix-env failed to install your new Home Manager profile!
+                Oops, nix-env failed to install your new Home Manager profile!
 
-          Perhaps there is a conflict with a package that was installed using
-          'nix-env -i'? Try running
+                Perhaps there is a conflict with a package that was installed using
+                'nix-env -i'? Try running
 
-              nix-env -q
+                    nix-env -q
 
-          and if there is a conflicting package you can remove it with
+                and if there is a conflicting package you can remove it with
 
-              nix-env -e {package name}
+                    nix-env -e {package name}
 
-          Then try activating your Home Manager configuration again.
-          EOF
-            exit 1
+                Then try activating your Home Manager configuration again.
+
+               EOF
+             exit 1
+            fi
           fi
         ''
     );
@@ -517,27 +511,29 @@ in
     home.activationPackage =
       let
         mkCmd = res: ''
-            noteEcho Activating ${res.name}
-            ${res.data}
-          '';
+          noteEcho Activating ${res.name}
+          ${res.data}
+        '';
         sortedCommands = hm.dag.topoSort cfg.activation;
         activationCmds =
           if sortedCommands ? result then
             concatStringsSep "\n" (map mkCmd sortedCommands.result)
           else
-            abort ("Dependency cycle in activation script: "
-              + builtins.toJSON sortedCommands);
+            abort (
+              "Dependency cycle in activation script: "
+              + builtins.toJSON sortedCommands
+            );
 
         # Programs that always should be available on the activation
         # script's PATH.
         activationBinPaths = lib.makeBinPath [
           pkgs.bash
           pkgs.coreutils
-          pkgs.diffutils        # For `cmp` and `diff`.
+          pkgs.diffutils # For `cmp` and `diff`.
           pkgs.findutils
           pkgs.gnugrep
           pkgs.gnused
-          pkgs.ncurses          # For `tput`.
+          pkgs.ncurses # For `tput`.
         ]
         + optionalString (!cfg.emptyActivationPath) "\${PATH:+:}$PATH";
 
